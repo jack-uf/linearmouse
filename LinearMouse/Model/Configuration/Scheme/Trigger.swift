@@ -19,6 +19,10 @@ extension Scheme {
             case wheel(ScrollDirection)
         }
 
+        var effectiveClickCount: Int {
+            clickCount ?? 1
+        }
+
         struct TwoButtonRelationship: Equatable {
             enum Kind: Equatable {
                 case simultaneous
@@ -31,6 +35,9 @@ extension Scheme {
         }
 
         var input: Input
+        /// The native mouse click count required to activate this trigger.
+        /// Omitted values represent a single press for compatibility.
+        var clickCount: Int?
         // swiftlint:disable:next discouraged_optional_collection
         var simultaneous: [Button]?
         // swiftlint:disable:next discouraged_optional_collection
@@ -40,6 +47,7 @@ extension Scheme {
 
         init(
             input: Input,
+            clickCount: Int? = nil,
             // swiftlint:disable:next discouraged_optional_collection
             simultaneous: [Button]? = nil,
             // swiftlint:disable:next discouraged_optional_collection
@@ -48,6 +56,7 @@ extension Scheme {
             modifiers: [Modifier]? = nil
         ) {
             self.input = input
+            self.clickCount = clickCount
             self.simultaneous = simultaneous.nilIfEmpty
             self.whileHeld = whileHeld.nilIfEmpty
             self.modifiers = modifiers.nilIfEmpty
@@ -148,6 +157,7 @@ extension Scheme {
         var canonicalized: Self {
             .init(
                 input: input,
+                clickCount: effectiveClickCount == 1 ? nil : effectiveClickCount,
                 simultaneous: simultaneous?.uniquedAndSorted,
                 whileHeld: whileHeld?.uniquedAndSorted,
                 modifiers: modifiers.map { Array(Set($0)).sorted { $0.sortOrder < $1.sortOrder } }
@@ -155,7 +165,8 @@ extension Scheme {
         }
 
         func isEquivalent(to other: Self) -> Bool {
-            guard Set(modifiers ?? []) == Set(other.modifiers ?? []),
+            guard effectiveClickCount == other.effectiveClickCount,
+                  Set(modifiers ?? []) == Set(other.modifiers ?? []),
                   Set(whileHeld ?? []) == Set(other.whileHeld ?? []) else {
                 return false
             }

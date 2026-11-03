@@ -189,6 +189,27 @@ final class ButtonMappingRecordingEngineTests: XCTestCase {
         }
     }
 
+    func testRecordsDoubleAndTriplePressesFromNativeClickCount() {
+        for clickCount in [2, 3] {
+            var recorder = ButtonMappingRecordingEngine(recordsClickSequences: true)
+
+            recorder.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(0))
+            recorder.buttonUp(.mouse(4), at: ms(40))
+            recorder.buttonDown(
+                .mouse(4),
+                modifierFlags: [],
+                clickCount: clickCount,
+                at: ms(100)
+            )
+            recorder.buttonUp(.mouse(4), at: ms(140))
+
+            XCTAssertEqual(recorder.snapshot.mapping?.trigger?.clickCount, clickCount)
+            XCTAssertFalse(recorder.snapshot.isComplete)
+            recorder.advance(to: ms(500))
+            XCTAssertTrue(recorder.snapshot.isComplete)
+        }
+    }
+
     func testShowsMovementDirectionBeforeSwipeThreshold() {
         var recorder = ButtonMappingRecordingEngine()
 

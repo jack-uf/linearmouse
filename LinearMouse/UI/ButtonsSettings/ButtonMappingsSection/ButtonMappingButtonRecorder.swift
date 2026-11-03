@@ -154,7 +154,10 @@ struct ButtonMappingButtonRecorder: View {
 
         if recording {
             mapping = .init()
-            advancedEngine = .init(policy: .configured(by: SchemeState.shared.mergedScheme.buttons.swipe))
+            advancedEngine = .init(
+                policy: .configured(by: SchemeState.shared.mergedScheme.buttons.swipe),
+                recordsClickSequences: true
+            )
             advancedSnapshot = advancedEngine.snapshot
             startEventObservation()
         }
@@ -253,7 +256,11 @@ struct ButtonMappingButtonRecorder: View {
             if event.isPressed == false {
                 advancedEngine.buttonUp(button, at: now)
             } else {
-                advancedEngine.buttonDown(button, modifierFlags: event.modifierFlags, at: now)
+                advancedEngine.buttonDown(
+                    button,
+                    modifierFlags: event.modifierFlags,
+                    at: now
+                )
                 if event.isPressed == nil {
                     advancedEngine.buttonUp(button, at: now)
                 }
@@ -283,6 +290,7 @@ struct ButtonMappingButtonRecorder: View {
             advancedEngine.buttonDown(
                 .mouse(Int(event.getIntegerValueField(.mouseEventButtonNumber))),
                 modifierFlags: event.flags,
+                clickCount: Int(event.getIntegerValueField(.mouseEventClickState)),
                 at: now
             )
         case .leftMouseUp, .rightMouseUp, .otherMouseUp:

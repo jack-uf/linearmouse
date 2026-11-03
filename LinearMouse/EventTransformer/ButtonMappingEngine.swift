@@ -300,6 +300,7 @@ struct ButtonMappingEngine {
     mutating func buttonDown(
         _ button: Button,
         modifierFlags: CGEventFlags,
+        clickCount: Int = 1,
         at timestamp: UInt64
     ) -> Output {
         var output = advance(to: timestamp)
@@ -339,7 +340,11 @@ struct ButtonMappingEngine {
             }
 
             let genericFlags = ModifierState.generic(from: modifierFlags)
-            let orderedCandidates = buttonCandidates(containing: button, modifierFlags: genericFlags)
+            let orderedCandidates = buttonCandidates(
+                containing: button,
+                modifierFlags: genericFlags,
+                clickCount: clickCount
+            )
             let takesOverHeldPrefix = session.commitment == nil && orderedCandidates.contains { candidate in
                 let heldButtons = Set(candidate.trigger.whileHeld ?? [])
                 return !heldButtons.isEmpty &&
@@ -396,7 +401,11 @@ struct ButtonMappingEngine {
         }
 
         let genericFlags = ModifierState.generic(from: modifierFlags)
-        let candidates = buttonCandidates(containing: button, modifierFlags: genericFlags)
+        let candidates = buttonCandidates(
+            containing: button,
+            modifierFlags: genericFlags,
+            clickCount: clickCount
+        )
         let capturesHeldPrefix = hasHeldPrefix(button, modifierFlags: genericFlags)
         guard !candidates.isEmpty || capturesHeldPrefix else {
             return output
@@ -795,11 +804,16 @@ struct ButtonMappingEngine {
         return pressedButtons.subtracting(capturedButtons)
     }
 
-    private func buttonCandidates(containing button: Button, modifierFlags: CGEventFlags) -> [Candidate] {
+    private func buttonCandidates(
+        containing button: Button,
+        modifierFlags: CGEventFlags,
+        clickCount: Int
+    ) -> [Candidate] {
         mappings.enumerated().compactMap { index, mapping in
             guard let trigger = mapping.trigger,
                   case .button = trigger.input,
                   trigger.chordButtons.contains(button),
+                  trigger.effectiveClickCount == max(clickCount, 1),
                   trigger.modifierFlags == modifierFlags,
                   Set(trigger.whileHeld ?? []).isSubset(of: pressedButtons),
                   trigger.statefulButtons.isDisjoint(with: activelyCapturedButtons) else {

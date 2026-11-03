@@ -242,7 +242,12 @@ final class ButtonMappingTransformer: EventTransformer {
                 return event
             }
             recognition = recognize(includingFreshLane: !isRecording) { engine in
-                engine.buttonDown(button, modifierFlags: event.flags, at: now)
+                engine.buttonDown(
+                    button,
+                    modifierFlags: event.flags,
+                    clickCount: Int(event.getIntegerValueField(.mouseEventClickState)),
+                    at: now
+                )
             }
             canBuffer = true
             alwaysForwardsEvent = false

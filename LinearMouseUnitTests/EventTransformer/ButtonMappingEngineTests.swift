@@ -142,6 +142,28 @@ final class ButtonMappingEngineTests: XCTestCase {
         XCTAssertEqual(engine.state, .idle)
     }
 
+    func testClickCountSelectsDoublePressMapping() {
+        let mapping = Mapping(
+            trigger: .init(input: .button(.mouse(4)), clickCount: 2),
+            outcomes: .init(shortPress: shortAction)
+        )
+        var engine = ButtonMappingEngine(mappings: [mapping])
+
+        XCTAssertEqual(
+            engine.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(0)).actions,
+            []
+        )
+        XCTAssertFalse(engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(40)).consumesEvent)
+        XCTAssertEqual(
+            engine.buttonDown(.mouse(4), modifierFlags: [], clickCount: 2, at: ms(100)).actions,
+            []
+        )
+        XCTAssertEqual(
+            engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(140)).actions,
+            [shortAction]
+        )
+    }
+
     func testLongPressExecutesAtGlobalDeadlineAndSuppressesShortPress() {
         var engine = engine([buttonMapping(4, short: shortAction, long: longAction)])
 

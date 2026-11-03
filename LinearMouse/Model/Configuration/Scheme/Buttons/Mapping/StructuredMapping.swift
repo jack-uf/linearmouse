@@ -123,7 +123,8 @@ extension Scheme.Trigger {
     func valid(with outcomes: Scheme.Buttons.Mapping.Outcomes?) -> Bool {
         let canonicalized = canonicalized
 
-        guard canonicalized.simultaneous?.containsInput(canonicalized.input) != true,
+        guard (1 ... 3).contains(canonicalized.effectiveClickCount),
+              canonicalized.simultaneous?.containsInput(canonicalized.input) != true,
               canonicalized.whileHeld?.containsInput(canonicalized.input) != true,
               Set(canonicalized.simultaneous ?? []).isDisjoint(with: canonicalized.whileHeld ?? []) else {
             return false
