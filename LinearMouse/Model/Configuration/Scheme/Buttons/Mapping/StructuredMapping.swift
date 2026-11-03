@@ -136,7 +136,9 @@ extension Scheme.Trigger {
                 canonicalized.whileHeld?.isEmpty == false
             let isUnmodifiedStandalonePrimary = button.mouseButtonNumber == 0 &&
                 !hasOtherButtons && canonicalized.modifierFlags.isEmpty
-            guard !isUnmodifiedStandalonePrimary || outcomes?.isLongPressOnly == true,
+            guard !isUnmodifiedStandalonePrimary ||
+                canonicalized.effectiveClickCount > 1 ||
+                outcomes?.isLongPressOnly == true,
                   outcomes?.press == nil || outcomes?.hasDeferredOutcome == false else {
                 return false
             }

@@ -94,9 +94,12 @@ struct ButtonMappingRecordingEngine {
         at timestamp: UInt64
     ) {
         advance(to: timestamp)
+        let isClickSequenceContinuation = recordsClickSequences &&
+            pressedButtons.isEmpty &&
+            clickCount > 1
         let replacesProvisionalLongPress = recognition == .longPress && !pressedButtons.isEmpty
         guard wheelMapping == nil,
-              recognition == nil || replacesProvisionalLongPress,
+              recognition == nil || replacesProvisionalLongPress || isClickSequenceContinuation,
               !pressedButtons.contains(button) else {
             return
         }

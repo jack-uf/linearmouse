@@ -153,7 +153,7 @@ final class ButtonMappingEngineTests: XCTestCase {
             engine.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(0)).actions,
             []
         )
-        XCTAssertFalse(engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(40)).consumesEvent)
+        XCTAssertTrue(engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(40)).consumesEvent)
         XCTAssertEqual(
             engine.buttonDown(.mouse(4), modifierFlags: [], clickCount: 2, at: ms(100)).actions,
             []

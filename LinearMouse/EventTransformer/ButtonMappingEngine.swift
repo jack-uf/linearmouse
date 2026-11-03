@@ -36,6 +36,10 @@ struct ButtonMappingPolicy: Equatable {
     var longPressNanoseconds: UInt64 {
         UInt64(longPressDuration * 1_000_000_000)
     }
+
+    var clickSequenceNanoseconds: UInt64 {
+        300_000_000
+    }
 }
 
 struct ButtonMappingEngine {
@@ -147,6 +151,7 @@ struct ButtonMappingEngine {
     private struct Session {
         var startedAt: UInt64
         var candidates: [Candidate]
+        var clickCount: Int
         var capturesHeldPrefix: Bool
         var capturedButtons: Set<Button>
         var heldPrefixButtons: Set<Button>
@@ -294,7 +299,11 @@ struct ButtonMappingEngine {
         guard !session.candidates.isEmpty else {
             return nil
         }
-        return session.startedAt &+ policy.chordWindowNanoseconds
+        let deadline = session.startedAt &+ policy.chordWindowNanoseconds
+        if session.candidates.contains(where: { $0.trigger.effectiveClickCount > 1 }) {
+            return max(deadline, session.startedAt &+ policy.clickSequenceNanoseconds)
+        }
+        return deadline
     }
 
     mutating func buttonDown(
@@ -335,8 +344,12 @@ struct ButtonMappingEngine {
 
         if var session {
             if session.capturedButtons.contains(button) {
-                output.consumesEvent = true
-                return output
+                let continuesClickSequence = session.resolution == nil &&
+                    max(clickCount, 1) > session.clickCount
+                if !continuesClickSequence {
+                    output.consumesEvent = true
+                    return output
+                }
             }
 
             let genericFlags = ModifierState.generic(from: modifierFlags)
@@ -355,6 +368,7 @@ struct ButtonMappingEngine {
                 session = .init(
                     startedAt: timestamp,
                     candidates: orderedCandidates,
+                    clickCount: max(clickCount, 1),
                     capturesHeldPrefix: hasHeldPrefix(button, modifierFlags: genericFlags),
                     capturedButtons: session.capturedButtons.union([button]),
                     heldPrefixButtons: session.heldPrefixButtons
@@ -370,6 +384,10 @@ struct ButtonMappingEngine {
 
             if session.resolution == nil,
                session.candidates.contains(where: { $0.trigger.chordButtons.contains(button) }) {
+                session.clickCount = max(session.clickCount, max(clickCount, 1))
+                session.candidates = session.candidates.filter {
+                    $0.trigger.effectiveClickCount >= session.clickCount
+                }
                 session.capturedButtons.insert(button)
                 self.session = session
                 output.consumesEvent = true
@@ -430,6 +448,7 @@ struct ButtonMappingEngine {
         session = .init(
             startedAt: timestamp,
             candidates: candidates,
+            clickCount: max(clickCount, 1),
             capturesHeldPrefix: capturesHeldPrefix,
             capturedButtons: [button],
             heldPrefixButtons: capturesHeldPrefix ? [button] : []
@@ -518,6 +537,11 @@ struct ButtonMappingEngine {
         }
 
         if session.resolution == nil {
+            if session.clickCount == 1,
+               session.candidates.contains(where: { $0.trigger.effectiveClickCount > 1 }) {
+                self.session = session
+                return output
+            }
             output.append(resolveIfPossible(at: timestamp, force: true, releasingButton: button))
             guard let updatedSession = self.session else {
                 if let release = releaseActiveCapture(containing: button) {
@@ -529,6 +553,11 @@ struct ButtonMappingEngine {
         }
 
         if session.commitment == nil {
+            if session.resolution == nil,
+               session.candidates.contains(where: { $0.trigger.effectiveClickCount > session.clickCount }) {
+                self.session = session
+                return output
+            }
             if let action = configuredAction(session.resolution?.candidate.mapping.outcomes?.shortPress) {
                 output.actions.append(action)
                 session.commitment = .statefulAction
@@ -701,9 +730,17 @@ struct ButtonMappingEngine {
             return output
         }
 
+        let hasPendingClickSequence = session.candidates.contains {
+            $0.trigger.effectiveClickCount > session.clickCount
+        }
+        let resolutionDeadline = session.startedAt &+ (
+            hasPendingClickSequence
+                ? policy.clickSequenceNanoseconds
+                : policy.chordWindowNanoseconds
+        )
         if session.resolution == nil,
            !session.candidates.isEmpty,
-           timestamp >= session.startedAt &+ policy.chordWindowNanoseconds {
+           timestamp >= resolutionDeadline {
             output.append(resolveIfPossible(at: timestamp, force: true))
         }
 
@@ -813,7 +850,8 @@ struct ButtonMappingEngine {
             guard let trigger = mapping.trigger,
                   case .button = trigger.input,
                   trigger.chordButtons.contains(button),
-                  trigger.effectiveClickCount == max(clickCount, 1),
+                  trigger.effectiveClickCount == 1 ||
+                  trigger.effectiveClickCount >= max(clickCount, 1),
                   trigger.modifierFlags == modifierFlags,
                   Set(trigger.whileHeld ?? []).isSubset(of: pressedButtons),
                   trigger.statefulButtons.isDisjoint(with: activelyCapturedButtons) else {
@@ -893,6 +931,7 @@ struct ButtonMappingEngine {
 
         let completed = session.candidates.filter { candidate in
             candidate.trigger.chordButtons.isSubset(of: pressedButtons) &&
+                candidate.trigger.effectiveClickCount == session.clickCount &&
                 chordIsWithinWindow(candidate.trigger.chordButtons) &&
                 Set(candidate.trigger.whileHeld ?? []).isSubset(of: pressedButtons)
         }
