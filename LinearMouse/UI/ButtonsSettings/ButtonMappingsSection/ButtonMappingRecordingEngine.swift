@@ -49,6 +49,9 @@ struct ButtonMappingRecordingEngine {
     private var pressedAt = [Button: UInt64]()
     private var triggerStartedAt: UInt64?
     private var clickCount = 1
+    private var lastClickButton: Button?
+    private var lastClickUpAt: UInt64?
+    private var clickSequenceCount = 0
     private var lastTimestamp: UInt64 = 0
     private var modifierFlags: CGEventFlags = []
     private var deltaX = 0.0
@@ -94,9 +97,14 @@ struct ButtonMappingRecordingEngine {
         at timestamp: UInt64
     ) {
         advance(to: timestamp)
+        let nativeClickCount = min(max(clickCount, 1), 3)
+        let isTimedClickContinuation = recordsClickSequences &&
+            pressedButtons.isEmpty &&
+            lastClickButton == button &&
+            lastClickUpAt.map { timestamp &- $0 <= policy.clickSequenceNanoseconds } == true
         let isClickSequenceContinuation = recordsClickSequences &&
             pressedButtons.isEmpty &&
-            clickCount > 1
+            (nativeClickCount > 1 || isTimedClickContinuation)
         let replacesProvisionalLongPress = recognition == .longPress && !pressedButtons.isEmpty
         guard wheelMapping == nil,
               recognition == nil || replacesProvisionalLongPress || isClickSequenceContinuation,
@@ -110,7 +118,9 @@ struct ButtonMappingRecordingEngine {
 
         if pressedButtons.isEmpty {
             self.modifierFlags = ModifierState.generic(from: modifierFlags)
-            self.clickCount = min(max(clickCount, 1), 3)
+            self.clickCount = isTimedClickContinuation
+                ? min(max(clickSequenceCount + 1, nativeClickCount), 3)
+                : nativeClickCount
             completionDeadline = nil
             if recordsClickSequences, self.clickCount > 1 {
                 triggerButtons = [button]
@@ -124,7 +134,15 @@ struct ButtonMappingRecordingEngine {
         pressedButtons.append(button)
         pressedAt[button] = timestamp
 
-        if triggerButtons.isEmpty {
+        if isClickSequenceContinuation {
+            // The native click count already identifies this as the next
+            // click in the same sequence, not a second button in a chord.
+            triggerButtons = [button]
+            heldPrefixButtons = []
+            triggerStartedAt = timestamp
+            deltaX = 0
+            deltaY = 0
+        } else if triggerButtons.isEmpty {
             triggerButtons = [button]
             triggerStartedAt = timestamp
         } else if belongsToCurrentTriggerGroup(at: timestamp) {
@@ -153,6 +171,9 @@ struct ButtonMappingRecordingEngine {
         pressedButtons.removeAll { $0 == button }
         if pressedButtons.isEmpty {
             if recordsClickSequences {
+                lastClickButton = button
+                lastClickUpAt = timestamp
+                clickSequenceCount = self.clickCount
                 completionDeadline = timestamp &+ 300_000_000
             } else {
                 completed = currentMapping != nil

@@ -141,6 +141,7 @@ final class ButtonMappingTransformerTests: XCTestCase {
                         events.append(event)
                     }
                 }
+
                 let pressedState = UInt8(1 << button)
                 handler.handleReport(.init(report: Data([1, pressedState]), lastButtonStates: 0)) { _ in }
                 handler.handleReport(.init(report: Data([1, 0]), lastButtonStates: pressedState)) { _ in }
@@ -156,6 +157,61 @@ final class ButtonMappingTransformerTests: XCTestCase {
                 XCTAssertFalse(transformer.hasActiveInteraction)
             }
         }
+    }
+
+    func testTimedDoublePressExecutesRecordedKeyboardShortcut() throws {
+        let scheduler = ButtonMappingTestTimerScheduler()
+        let simulator = ButtonMappingTestKeySimulator()
+        let transformer = makeTransformer(
+            mappings: [
+                Mapping(
+                    trigger: .init(input: .button(.mouse(4))),
+                    outcomes: .init(shortPress: .arg0(.none))
+                ),
+                Mapping(
+                    trigger: .init(input: .button(.mouse(4)), clickCount: 2),
+                    outcomes: .init(shortPress: .arg1(.keyPress([.command, .c])))
+                )
+            ],
+            scheduler: scheduler,
+            keySimulator: simulator
+        )
+
+        for (timestamp, pressed) in [(UInt64(0), true), (40, false), (140, true), (180, false)] {
+            scheduler.advance(to: ms(timestamp))
+            let event = try buttonEvent(button: 4, pressed: pressed)
+            event.setIntegerValueField(.mouseEventClickState, value: 1)
+            XCTAssertNil(try transformer.transform(event, in: .init(device: nil)))
+        }
+
+        assertScrollKeyEvents(simulator, equal: [.press([.command, .c])])
+    }
+
+    func testSinglePressFallbackExecutesAfterTheDoublePressWindow() throws {
+        let scheduler = ButtonMappingTestTimerScheduler()
+        let simulator = ButtonMappingTestKeySimulator()
+        let transformer = makeTransformer(
+            mappings: [
+                buttonMapping(short: .arg1(.keyPress([.a]))),
+                Mapping(
+                    trigger: .init(input: .button(.mouse(4)), clickCount: 2),
+                    outcomes: .init(shortPress: .arg1(.keyPress([.command, .c])))
+                )
+            ],
+            scheduler: scheduler,
+            keySimulator: simulator
+        )
+
+        for (timestamp, pressed) in [(UInt64(0), true), (40, false)] {
+            scheduler.advance(to: ms(timestamp))
+            let event = try buttonEvent(button: 4, pressed: pressed)
+            XCTAssertNil(try transformer.transform(event, in: .init(device: nil)))
+        }
+
+        scheduler.advance(to: ms(339))
+        assertScrollKeyEvents(simulator, equal: [])
+        scheduler.advance(to: ms(340))
+        assertScrollKeyEvents(simulator, equal: [.press([.a])])
     }
 
     func testHIDButtonFallbackIsReplayedWithoutRemapping() throws {

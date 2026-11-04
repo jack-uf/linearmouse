@@ -459,7 +459,11 @@ private struct ButtonMappingRecordingPreview: View {
                 format = NSLocalizedString("Press %@", comment: "Recorded gesture token")
             }
         }
-        return String(format: format, buttonDescription(button))
+        let buttonText = ButtonMappingTriggerText.clickDescription(
+            displayedMapping.trigger?.clickCount,
+            buttonDescription(button)
+        )
+        return String(format: format, buttonText)
     }
 
     private func modifierDescription(_ flags: CGEventFlags) -> String {

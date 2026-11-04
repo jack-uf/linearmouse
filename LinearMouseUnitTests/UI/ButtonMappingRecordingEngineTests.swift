@@ -204,10 +204,52 @@ final class ButtonMappingRecordingEngineTests: XCTestCase {
             recorder.buttonUp(.mouse(4), at: ms(140))
 
             XCTAssertEqual(recorder.snapshot.mapping?.trigger?.clickCount, clickCount)
+            XCTAssertNil(recorder.snapshot.mapping?.trigger?.simultaneous)
+            XCTAssertTrue(recorder.snapshot.mapping?.trigger?.valid(
+                with: recorder.snapshot.mapping?.outcomes
+            ) == true)
             XCTAssertFalse(recorder.snapshot.isComplete)
             recorder.advance(to: ms(500))
             XCTAssertTrue(recorder.snapshot.isComplete)
         }
+    }
+
+    func testInfersDoublePressWhenSideButtonReportsSingleClicks() {
+        var recorder = ButtonMappingRecordingEngine(recordsClickSequences: true)
+
+        recorder.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(0))
+        recorder.buttonUp(.mouse(4), at: ms(40))
+        recorder.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(140))
+        recorder.buttonUp(.mouse(4), at: ms(180))
+
+        XCTAssertEqual(recorder.snapshot.mapping?.trigger?.clickCount, 2)
+        XCTAssertNil(recorder.snapshot.mapping?.trigger?.simultaneous)
+        XCTAssertTrue(recorder.snapshot.mapping?.trigger?.valid(
+            with: recorder.snapshot.mapping?.outcomes
+        ) == true)
+    }
+
+    func testTriggerLabelsDistinguishSingleDoubleAndTriplePresses() {
+        let button: Mapping.Button = .mouse(4)
+        let single = Mapping.Trigger(input: .button(button))
+        let double = Mapping.Trigger(input: .button(button), clickCount: 2)
+        let triple = Mapping.Trigger(input: .button(button), clickCount: 3)
+
+        XCTAssertEqual(
+            ButtonMappingTriggerText.clickDescription(
+                single.clickCount,
+                "Button #4 click"
+            ),
+            "Button #4 click"
+        )
+        XCTAssertEqual(
+            ButtonMappingTriggerText.description(for: double),
+            "Button #4 click (double press)"
+        )
+        XCTAssertEqual(
+            ButtonMappingTriggerText.description(for: triple),
+            "Button #4 click (triple press)"
+        )
     }
 
     func testShowsMovementDirectionBeforeSwipeThreshold() {

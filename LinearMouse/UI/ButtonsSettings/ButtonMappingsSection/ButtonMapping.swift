@@ -204,7 +204,7 @@ enum ButtonMappingTriggerText {
 
         switch trigger.input {
         case let .button(button):
-            let buttonDescription = clickDescription(
+            let describedButton = clickDescription(
                 trigger.clickCount,
                 buttonDescription(button)
             )
@@ -214,7 +214,7 @@ enum ButtonMappingTriggerText {
                         "Press %@ simultaneously with %@",
                         comment: "Localized simultaneous button trigger"
                     ),
-                    buttonDescription,
+                    describedButton,
                     buttonListDescription(simultaneous, using: buttonDescription)
                 )
 
@@ -233,7 +233,7 @@ enum ButtonMappingTriggerText {
             }
 
             guard !heldButtons.isEmpty else {
-                return nil
+                return trigger.effectiveClickCount > 1 ? describedButton : nil
             }
 
             return String(
@@ -242,7 +242,7 @@ enum ButtonMappingTriggerText {
                     comment: "Localized ordered button trigger"
                 ),
                 buttonListDescription(heldButtons, using: buttonDescription),
-                buttonDescription
+                describedButton
             )
         case let .wheel(direction):
             guard !heldButtons.isEmpty else {
@@ -260,7 +260,7 @@ enum ButtonMappingTriggerText {
         }
     }
 
-    private static func clickDescription(_ clickCount: Int?, _ button: String) -> String {
+    static func clickDescription(_ clickCount: Int?, _ button: String) -> String {
         switch clickCount {
         case 2:
             return String(format: NSLocalizedString("%@ (double press)", comment: "Double press trigger"), button)

@@ -434,7 +434,10 @@ final class ButtonMappingTransformer: EventTransformer {
                 guard let pending = trial.output.recognitionChord else {
                     return true
                 }
-                return !completed.buttons.isStrictSubset(of: pending)
+                let extendsPendingChord = completed.buttons.isStrictSubset(of: pending)
+                let isHigherPriorityClickSequence = completed.buttons == pending &&
+                    (trial.output.recognitionPriority ?? Int.min) > completed.priority
+                return !extendsPendingChord && !isHigherPriorityClickSequence
             }
         }
 
