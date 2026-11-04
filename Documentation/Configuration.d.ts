@@ -724,6 +724,11 @@ declare namespace Scheme {
         input: { button: Button };
 
         /**
+         * @description Native mouse click count required by this trigger. Omit for a single press; supported values are 2 (double press) and 3 (triple press).
+         */
+        clickCount?: 2 | 3;
+
+        /**
          * @description Additional buttons pressed within the global chord window. Their order does not matter.
          */
         simultaneous?: Button[];

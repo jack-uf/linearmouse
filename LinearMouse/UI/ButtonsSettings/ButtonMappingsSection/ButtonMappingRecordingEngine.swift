@@ -42,11 +42,16 @@ struct ButtonMappingRecordingEngine {
     }
 
     private let policy: ButtonMappingPolicy
+    private let recordsClickSequences: Bool
     private var pressedButtons = [Button]()
     private var heldPrefixButtons = [Button]()
     private var triggerButtons = [Button]()
     private var pressedAt = [Button: UInt64]()
     private var triggerStartedAt: UInt64?
+    private var clickCount = 1
+    private var lastClickButton: Button?
+    private var lastClickUpAt: UInt64?
+    private var clickSequenceCount = 0
     private var lastTimestamp: UInt64 = 0
     private var modifierFlags: CGEventFlags = []
     private var deltaX = 0.0
@@ -54,9 +59,14 @@ struct ButtonMappingRecordingEngine {
     private var recognition: Recognition?
     private var wheelMapping: Mapping?
     private var completed = false
+    private var completionDeadline: UInt64?
 
-    init(policy: ButtonMappingPolicy = .default) {
+    init(
+        policy: ButtonMappingPolicy = .default,
+        recordsClickSequences: Bool = false
+    ) {
         self.policy = policy
+        self.recordsClickSequences = recordsClickSequences
     }
 
     var snapshot: Snapshot {
@@ -83,12 +93,21 @@ struct ButtonMappingRecordingEngine {
     mutating func buttonDown(
         _ button: Button,
         modifierFlags: CGEventFlags,
+        clickCount: Int = 1,
         at timestamp: UInt64
     ) {
         advance(to: timestamp)
+        let nativeClickCount = min(max(clickCount, 1), 3)
+        let isTimedClickContinuation = recordsClickSequences &&
+            pressedButtons.isEmpty &&
+            lastClickButton == button &&
+            lastClickUpAt.map { timestamp &- $0 <= policy.clickSequenceNanoseconds } == true
+        let isClickSequenceContinuation = recordsClickSequences &&
+            pressedButtons.isEmpty &&
+            (nativeClickCount > 1 || isTimedClickContinuation)
         let replacesProvisionalLongPress = recognition == .longPress && !pressedButtons.isEmpty
         guard wheelMapping == nil,
-              recognition == nil || replacesProvisionalLongPress,
+              recognition == nil || replacesProvisionalLongPress || isClickSequenceContinuation,
               !pressedButtons.contains(button) else {
             return
         }
@@ -99,12 +118,31 @@ struct ButtonMappingRecordingEngine {
 
         if pressedButtons.isEmpty {
             self.modifierFlags = ModifierState.generic(from: modifierFlags)
+            self.clickCount = isTimedClickContinuation
+                ? min(max(clickSequenceCount + 1, nativeClickCount), 3)
+                : nativeClickCount
+            completionDeadline = nil
+            if recordsClickSequences, self.clickCount > 1 {
+                triggerButtons = [button]
+                heldPrefixButtons = []
+                triggerStartedAt = timestamp
+                recognition = nil
+                completed = false
+            }
         }
 
         pressedButtons.append(button)
         pressedAt[button] = timestamp
 
-        if triggerButtons.isEmpty {
+        if isClickSequenceContinuation {
+            // The native click count already identifies this as the next
+            // click in the same sequence, not a second button in a chord.
+            triggerButtons = [button]
+            heldPrefixButtons = []
+            triggerStartedAt = timestamp
+            deltaX = 0
+            deltaY = 0
+        } else if triggerButtons.isEmpty {
             triggerButtons = [button]
             triggerStartedAt = timestamp
         } else if belongsToCurrentTriggerGroup(at: timestamp) {
@@ -132,7 +170,14 @@ struct ButtonMappingRecordingEngine {
 
         pressedButtons.removeAll { $0 == button }
         if pressedButtons.isEmpty {
-            completed = currentMapping != nil
+            if recordsClickSequences {
+                lastClickButton = button
+                lastClickUpAt = timestamp
+                clickSequenceCount = self.clickCount
+                completionDeadline = timestamp &+ 300_000_000
+            } else {
+                completed = currentMapping != nil
+            }
         }
     }
 
@@ -187,18 +232,23 @@ struct ButtonMappingRecordingEngine {
 
     mutating func advance(to timestamp: UInt64) {
         lastTimestamp = max(lastTimestamp, timestamp)
-        guard !pressedButtons.isEmpty,
-              wheelMapping == nil,
-              recognition == nil,
-              let activatedAt = triggerButtons.compactMap({ pressedAt[$0] }).max(),
-              timestamp >= activatedAt &+ policy.longPressNanoseconds else {
-            return
+        if !pressedButtons.isEmpty,
+           wheelMapping == nil,
+           recognition == nil,
+           let activatedAt = triggerButtons.compactMap({ pressedAt[$0] }).max(),
+           timestamp >= activatedAt &+ policy.longPressNanoseconds {
+            recognition = .longPress
         }
-        recognition = .longPress
+        if pressedButtons.isEmpty,
+           let completionDeadline,
+           timestamp >= completionDeadline {
+            completed = currentMapping != nil
+            self.completionDeadline = nil
+        }
     }
 
     mutating func reset() {
-        self = .init(policy: policy)
+        self = .init(policy: policy, recordsClickSequences: recordsClickSequences)
     }
 
     private var isReadyForOrderedInput: Bool {
@@ -257,6 +307,7 @@ struct ButtonMappingRecordingEngine {
         return .init(
             trigger: .init(
                 input: .button(primaryButton),
+                clickCount: clickCount == 1 ? nil : clickCount,
                 simultaneous: Array(buttons.dropFirst()),
                 whileHeld: heldPrefixButtons,
                 modifiers: modifiers(from: modifierFlags)

@@ -613,6 +613,10 @@ trigger, they belong in the same `outcomes` object:
 }
 ```
 
+Set `clickCount` to `2` or `3` to require a native double or triple press of the
+trigger button. Omit it for a single press. The recognizer delays the first click
+briefly so a multi-click trigger can be distinguished from an ordinary click.
+
 Additional buttons in `simultaneous` form an unordered chord. The most specific completed chord
 wins over a mapping for one of its individual buttons:
 

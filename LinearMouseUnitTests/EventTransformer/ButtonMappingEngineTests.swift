@@ -142,6 +142,118 @@ final class ButtonMappingEngineTests: XCTestCase {
         XCTAssertEqual(engine.state, .idle)
     }
 
+    func testClickCountSelectsDoublePressMapping() {
+        let mapping = Mapping(
+            trigger: .init(input: .button(.mouse(4)), clickCount: 2),
+            outcomes: .init(shortPress: shortAction)
+        )
+        var engine = ButtonMappingEngine(mappings: [mapping])
+
+        XCTAssertEqual(
+            engine.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(0)).actions,
+            []
+        )
+        XCTAssertTrue(engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(40)).consumesEvent)
+        XCTAssertEqual(
+            engine.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(100)).actions,
+            []
+        )
+        XCTAssertEqual(
+            engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(140)).actions,
+            [shortAction]
+        )
+    }
+
+    func testTimedDoublePressExecutesKeyboardShortcutInsteadOfSinglePressFallback() {
+        let singleAction: Action = .arg0(.showDesktop)
+        let shortcut: Action = .arg1(.keyPress([.command, .c]))
+        var engine = ButtonMappingEngine(mappings: [
+            Mapping(
+                trigger: .init(input: .button(.mouse(4))),
+                outcomes: .init(shortPress: singleAction)
+            ),
+            Mapping(
+                trigger: .init(input: .button(.mouse(4)), clickCount: 2),
+                outcomes: .init(shortPress: shortcut)
+            )
+        ])
+
+        _ = engine.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(0))
+        _ = engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(40))
+        _ = engine.buttonDown(.mouse(4), modifierFlags: [], clickCount: 1, at: ms(140))
+        XCTAssertEqual(
+            engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(180)).actions,
+            [shortcut]
+        )
+    }
+
+    func testSinglePressFallbackWaitsUntilTheClickSequenceWindowExpires() {
+        let singleAction: Action = .arg0(.showDesktop)
+        var engine = ButtonMappingEngine(mappings: [
+            Mapping(
+                trigger: .init(input: .button(.mouse(4))),
+                outcomes: .init(shortPress: singleAction)
+            ),
+            Mapping(
+                trigger: .init(input: .button(.mouse(4)), clickCount: 2),
+                outcomes: .init(shortPress: .arg1(.keyPress([.command, .c])))
+            )
+        ])
+
+        _ = engine.buttonDown(.mouse(4), modifierFlags: [], at: ms(0))
+        _ = engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(40))
+        XCTAssertEqual(engine.advance(to: ms(339)).actions, [])
+        XCTAssertEqual(engine.advance(to: ms(340)).actions, [singleAction])
+    }
+
+    func testLongFirstClickCanStillContinueAsDoublePress() {
+        let singleAction: Action = .arg0(.showDesktop)
+        let doubleAction: Action = .arg1(.keyPress([.command, .c]))
+        var engine = ButtonMappingEngine(mappings: [
+            Mapping(
+                trigger: .init(input: .button(.mouse(4))),
+                outcomes: .init(shortPress: singleAction)
+            ),
+            Mapping(
+                trigger: .init(input: .button(.mouse(4)), clickCount: 2),
+                outcomes: .init(shortPress: doubleAction)
+            )
+        ])
+
+        _ = engine.buttonDown(.mouse(4), modifierFlags: [], at: ms(0))
+        _ = engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(400))
+        _ = engine.buttonDown(.mouse(4), modifierFlags: [], at: ms(600))
+        XCTAssertEqual(engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(640)).actions, [doubleAction])
+    }
+
+    func testTriplePressOutranksDoublePressUntilItsSequenceWindowExpires() {
+        let doubleAction: Action = .arg0(.showDesktop)
+        let tripleAction: Action = .arg1(.keyPress([.command, .c]))
+        var engine = ButtonMappingEngine(mappings: [
+            Mapping(
+                trigger: .init(input: .button(.mouse(4)), clickCount: 2),
+                outcomes: .init(shortPress: doubleAction)
+            ),
+            Mapping(
+                trigger: .init(input: .button(.mouse(4)), clickCount: 3),
+                outcomes: .init(shortPress: tripleAction)
+            )
+        ])
+
+        let timestamps: [UInt64] = [0, 40, 140, 180, 280, 320]
+        for timestamp in timestamps {
+            if timestamp == 0 || timestamp == 140 || timestamp == 280 {
+                _ = engine.buttonDown(.mouse(4), modifierFlags: [], at: ms(timestamp))
+            } else {
+                let expectedAction = timestamp == 320 ? tripleAction : nil
+                XCTAssertEqual(
+                    engine.buttonUp(.mouse(4), modifierFlags: [], at: ms(timestamp)).actions,
+                    expectedAction.map { [$0] } ?? []
+                )
+            }
+        }
+    }
+
     func testLongPressExecutesAtGlobalDeadlineAndSuppressesShortPress() {
         var engine = engine([buttonMapping(4, short: shortAction, long: longAction)])
 

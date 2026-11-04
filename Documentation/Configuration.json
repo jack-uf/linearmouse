@@ -517,6 +517,14 @@
     "Scheme.Buttons.Mapping.ButtonTrigger": {
       "additionalProperties": false,
       "properties": {
+        "clickCount": {
+          "description": "Native mouse click count required by this trigger. Omit for a single press; supported values are 2 (double press) and 3 (triple press).",
+          "enum": [
+            2,
+            3
+          ],
+          "type": "number"
+        },
         "input": {
           "additionalProperties": false,
           "properties": {

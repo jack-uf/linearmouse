@@ -27,7 +27,7 @@ struct KeyboardShortcutRecorder: View {
 
     @State private var recordingObservationToken: ObservationToken?
 
-    @State private var recordingModifiers: CGEventFlags = []
+    @State private var recordingState = KeyboardShortcutRecordingState()
 
     var body: some View {
         Button {
@@ -53,7 +53,7 @@ struct KeyboardShortcutRecorder: View {
         recordingObservationToken = nil
 
         if recording {
-            recordingModifiers = []
+            recordingState = .init()
 
             recordingObservationToken = try? EventTap.observe([
                 .flagsChanged,
@@ -68,43 +68,15 @@ struct KeyboardShortcutRecorder: View {
         }
     }
 
-    private func buildKeysFromModifierFlags(_ modifierFlags: CGEventFlags) -> [Key] {
-        var keys: [Key] = []
-
-        if modifierFlags.contains(.maskControl) {
-            keys
-                .append(modifierFlags
-                    .contains(.init(rawValue: UInt64(NX_DEVICERCTLKEYMASK))) ? .controlRight : .control
-                )
-        }
-
-        if modifierFlags.contains(.maskShift) {
-            keys.append(modifierFlags.contains(.init(rawValue: UInt64(NX_DEVICERSHIFTKEYMASK))) ? .shiftRight : .shift)
-        }
-
-        if modifierFlags.contains(.maskAlternate) {
-            keys.append(modifierFlags.contains(.init(rawValue: UInt64(NX_DEVICERALTKEYMASK))) ? .optionRight : .option)
-        }
-
-        if modifierFlags.contains(.maskCommand) {
-            keys
-                .append(modifierFlags
-                    .contains(.init(rawValue: UInt64(NX_DEVICERCMDKEYMASK))) ? .commandRight : .command
-                )
-        }
-
-        return keys
-    }
-
     private func eventReceived(_ event: CGEvent) -> CGEvent? {
         switch event.type {
         case .flagsChanged:
-            recordingModifiers.insert(event.flags)
+            recordingState.modifierFlagsChanged(event.flags)
 
             // If all modifier keys are released without and other key pressed,
             // just record the modifier keys.
             if event.flags.isDisjoint(with: [.maskControl, .maskShift, .maskAlternate, .maskCommand]) {
-                keys = buildKeysFromModifierFlags(recordingModifiers)
+                keys = recordingState.keys
                 recording = false
             }
 
@@ -114,7 +86,7 @@ struct KeyboardShortcutRecorder: View {
             else {
                 break
             }
-            keys = buildKeysFromModifierFlags(event.flags) + [key]
+            keys = recordingState.keyDown(key, modifierFlags: event.flags)
             recording = false
 
         default:
@@ -122,5 +94,41 @@ struct KeyboardShortcutRecorder: View {
         }
 
         return nil
+    }
+}
+
+struct KeyboardShortcutRecordingState {
+    private(set) var modifiers: CGEventFlags = []
+
+    var keys: [Key] {
+        Self.keys(for: modifiers)
+    }
+
+    mutating func modifierFlagsChanged(_ flags: CGEventFlags) {
+        modifiers.formUnion(flags)
+    }
+
+    mutating func keyDown(_ key: Key, modifierFlags flags: CGEventFlags) -> [Key] {
+        modifiers.formUnion(flags)
+        return Self.keys(for: modifiers) + [key]
+    }
+
+    private static func keys(for flags: CGEventFlags) -> [Key] {
+        var keys = [Key]()
+
+        if flags.contains(.maskControl) {
+            keys.append(flags.contains(.init(rawValue: UInt64(NX_DEVICERCTLKEYMASK))) ? .controlRight : .control)
+        }
+        if flags.contains(.maskShift) {
+            keys.append(flags.contains(.init(rawValue: UInt64(NX_DEVICERSHIFTKEYMASK))) ? .shiftRight : .shift)
+        }
+        if flags.contains(.maskAlternate) {
+            keys.append(flags.contains(.init(rawValue: UInt64(NX_DEVICERALTKEYMASK))) ? .optionRight : .option)
+        }
+        if flags.contains(.maskCommand) {
+            keys.append(flags.contains(.init(rawValue: UInt64(NX_DEVICERCMDKEYMASK))) ? .commandRight : .command)
+        }
+
+        return keys
     }
 }

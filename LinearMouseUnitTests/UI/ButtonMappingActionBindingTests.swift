@@ -49,6 +49,15 @@ final class ButtonMappingActionBindingTests: XCTestCase {
         XCTAssertEqual(action, .arg1(.keyPress([.command, .a])))
     }
 
+    func testShortcutRecorderRetainsCommandWhenKeyDownFlagsOmitIt() {
+        var state = KeyboardShortcutRecordingState()
+
+        state.modifierFlagsChanged(.maskCommand)
+        let keys = state.keyDown(.c, modifierFlags: [])
+
+        XCTAssertEqual(keys, [.command, .c])
+    }
+
     private func makeActionBinding(
         _ action: Scheme.Buttons.Mapping.Action,
         setter: @escaping (Scheme.Buttons.Mapping.Action) -> Void = { _ in }

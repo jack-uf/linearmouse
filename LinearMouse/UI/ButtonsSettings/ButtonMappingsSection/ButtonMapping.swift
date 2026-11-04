@@ -204,13 +204,17 @@ enum ButtonMappingTriggerText {
 
         switch trigger.input {
         case let .button(button):
+            let describedButton = clickDescription(
+                trigger.clickCount,
+                buttonDescription(button)
+            )
             if let simultaneous = trigger.simultaneous, !simultaneous.isEmpty {
                 let simultaneousDescription = String(
                     format: NSLocalizedString(
                         "Press %@ simultaneously with %@",
                         comment: "Localized simultaneous button trigger"
                     ),
-                    buttonDescription(button),
+                    describedButton,
                     buttonListDescription(simultaneous, using: buttonDescription)
                 )
 
@@ -229,7 +233,7 @@ enum ButtonMappingTriggerText {
             }
 
             guard !heldButtons.isEmpty else {
-                return nil
+                return trigger.effectiveClickCount > 1 ? describedButton : nil
             }
 
             return String(
@@ -238,7 +242,7 @@ enum ButtonMappingTriggerText {
                     comment: "Localized ordered button trigger"
                 ),
                 buttonListDescription(heldButtons, using: buttonDescription),
-                buttonDescription(button)
+                describedButton
             )
         case let .wheel(direction):
             guard !heldButtons.isEmpty else {
@@ -253,6 +257,17 @@ enum ButtonMappingTriggerText {
                 buttonListDescription(heldButtons, using: buttonDescription),
                 scrollDescription(direction)
             )
+        }
+    }
+
+    static func clickDescription(_ clickCount: Int?, _ button: String) -> String {
+        switch clickCount {
+        case 2:
+            return String(format: NSLocalizedString("%@ (double press)", comment: "Double press trigger"), button)
+        case 3:
+            return String(format: NSLocalizedString("%@ (triple press)", comment: "Triple press trigger"), button)
+        default:
+            return button
         }
     }
 
